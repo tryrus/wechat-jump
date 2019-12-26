@@ -6,15 +6,15 @@
 === 思路 ===
 核心：每次落稳之后截图，根据截图算出棋子的坐标和下一个块顶面的中点坐标，
     根据两个点的水平距离乘以一个时间系数获得长按的时间
-    
+
 识别棋子：使用cv2.matchTemplate函数来识别
-    
+
 识别棋盘：靠底色和方块的色差来做，从分数之下的位置开始，一行一行扫描，
     由于圆形的块最顶上是一条线，方形的上面大概是一个点，所以就
     用类似识别棋子的做法多识别了几个点求中点，这时候得到了块中点的 X
     轴坐标，这时候假设现在棋子在当前块的中心，根据一个通过截图获取的
     固定的角度来推出中点的 Y 坐标
-    
+
 最后：根据两点的坐标算水平距离乘以系数来获取长按时间
 """
 
@@ -24,13 +24,9 @@ import time
 import cv2
 from PIL import Image
 import random
-import matplotlib.pyplot as plt
 
 VERSION = "1.1.4"
-scale = 0.25
-
 template = cv2.imread('./image/character.png')
-#template = cv2.resize(template, (0, 0), fx=scale, fy=scale)   # 将棋子图片缩小为原来的四分之一
 template_size = template.shape[:2]
 
 
@@ -40,26 +36,19 @@ def check_screenshot():
     except Exception:
         print('请确认已经连接上手机，并且adb可用')
 
+
 def pull_screenshot():
     os.system('adb shell screencap -p /sdcard/autojump.png')
     os.system('adb pull /sdcard/autojump.png ./autojump.png')
 
+
 # 搜索棋子在图片中的位置，并计算出棋子中点的坐标
-def search(im):
-    # w, h = im.shape[:2]
-    # if w > h:
-    #     im = im.rotate(-90, expand=True)  # 添加图片方向判断
+def find_piece(im, template):
     result = cv2.matchTemplate(im, template, cv2.TM_SQDIFF)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
-    # 在图中画出找出来的棋子的矩形框，我们这里不画出来
-    cv2.rectangle(
-        im,
-        (min_loc[0], min_loc[1]),
-        (min_loc[0] + template_size[1], min_loc[1] + template_size[0]),
-        (255, 0, 0),
-        4)
-    return im, min_loc[0] + template_size[1] / 2, min_loc[1] +  template_size[0]
+    return im, min_loc[0] + template_size[1] / 2
+
 
 def find_board(im, piece_x):  # 寻找终点坐标
     w, h = im.size  # 图片宽高
@@ -104,11 +93,10 @@ def set_button_position(im, gameover=0):  # 重设点击位置 再来一局位�
         uih = int(w / 9 * 16)
     else:
         uih = h
-    # uiw = int(uih / 16 * 9)
 
     # 如果游戏结束 点击再来一局
-    left = int(w / 2)  # 按钮半宽约uiw//5
-    # 根据9:16实测按钮高度中心0.825 按钮半高约uiw//28
+    left = int(w / 2)  # 按钮半宽
+    # 根据9:16实测按钮高度中心0.825 按钮半高
     top = int((h - uih) / 2 + uih * 0.825)
     if gameover:
         return left, top
@@ -117,7 +105,6 @@ def set_button_position(im, gameover=0):  # 重设点击位置 再来一局位�
     left = random.randint(w // 4, w - 20)  # 避开左下角按钮
     top = random.randint(h * 3 // 4, h - 20)
     return left, top
-
 
 
 def jump(piece_x, board_x, im, swipe_x1, swipe_y1):
@@ -151,31 +138,25 @@ def main():
         print('---\n%-12s %s (%s)' % ('Times:', count, time.asctime( time.localtime(time.time()))))
 
         # 获取截图
-
-        fig = plt.figure()
         pull_screenshot()
-
-
 
         # 找出棋子的位置，也就是第一个点的X轴的坐标
         im = cv2.imread('autojump.png')
-        #im = cv2.resize(im, (0, 0), fx=scale, fy=scale)
-        img, piece_x ,piece_width= search(im)
-        # im = plt.imshow(img, animated=True)
-        # plt.show()
-        # print('piece_x:',  piece_x)
+        img, piece_x= find_piece(im,template)
 
         # 找出棋盘位置，也就是第二个点的X轴坐标
         im = Image.open('./autojump.png')
         board_x = find_board(im, piece_x)
 
+        # 检查游戏是否结束
         gameover = 0 if all((piece_x, board_x)) else 1
         swipe_x1, swipe_y1 = set_button_position(
             im, gameover=gameover)  # 随机点击位置
 
         jump(piece_x, board_x, im, swipe_x1, swipe_y1)
 
-        wait = (random.random())**5 * 9 + 1  # 停1~9秒 指数越高平均间隔越短
+        # 等待时间，用于抓取更清晰的图片
+        wait = (random.random())**5 * 5 + 2  # 停2~5秒 指数越高平均间隔越短
         print('---\nWait %.3f s...' % wait)
         time.sleep(wait)
         print('Continue!')
