@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # author: Tryrus
 # im_pixel: 1080 X 1920
