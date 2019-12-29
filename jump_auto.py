@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # author: Tryrus
+# im_pixel: 1080 X 1920
+# time: 2019-12-25
 
 """
 === 思路 ===
@@ -11,9 +13,7 @@
 
 识别棋盘：靠底色和方块的色差来做，从分数之下的位置开始，一行一行扫描，
     由于圆形的块最顶上是一条线，方形的上面大概是一个点，所以就
-    用类似识别棋子的做法多识别了几个点求中点，这时候得到了块中点的 X
-    轴坐标，这时候假设现在棋子在当前块的中心，根据一个通过截图获取的
-    固定的角度来推出中点的 Y 坐标
+    多识别几个点求中点，这时候得到了块中点的 X轴坐标。
 
 最后：根据两点的坐标算水平距离乘以系数来获取长按时间
 """
@@ -31,10 +31,10 @@ template_size = template.shape[:2]
 
 
 def check_screenshot():
-    try:
-        pull_screenshot()
-    except Exception:
-        print('请确认已经连接上手机，并且adb可用')
+    cmd = 'adb shell screencap -p /sdcard/autojump.png'
+    if os.system(cmd) != 0:
+        print("请确认已经连接上手机，并且adb可用")
+        exit(1)
 
 
 def pull_screenshot():
@@ -42,15 +42,15 @@ def pull_screenshot():
     os.system('adb pull /sdcard/autojump.png ./autojump.png')
 
 
-# 搜索棋子在图片中的位置，并计算出棋子中点的坐标
+# 搜索棋子在图片中的位置，并计算出棋子最底部中点的X坐标
 def find_piece(im, template):
     result = cv2.matchTemplate(im, template, cv2.TM_SQDIFF)
     min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(result)
 
-    return im, min_loc[0] + template_size[1] / 2
+    return min_loc[0] + template_size[1] / 2
 
 
-def find_board(im, piece_x):  # 寻找终点坐标
+def find_board(im, piece_x):  # 寻找终点X坐标
     w, h = im.size  # 图片宽高
     im_pixel = im.load()
 
@@ -66,19 +66,20 @@ def find_board(im, piece_x):  # 寻找终点坐标
     # 寻找落点顶点
     board_x_set = []  # 目标坐标集合/改为list避免去重
     for by in range((h - w) // 2, (h + w) // 2, 4):
-        bg_pixel = im_pixel[0, by]
+        bg_pixel = im_pixel[0, by]   # highth = by ,width = 0 的最左边的像素点
         for bx in range(board_x_start, board_x_end):
             pixel = im_pixel[bx, by]
             # 修掉脑袋比下一个小格子还高的情况 屏蔽小人左右的范围
             if abs(bx - piece_x) < piece_width:
                 continue
 
-            # 修掉圆顶的时候一条线导致的小bug 这个颜色判断应该OK
+            # 如果此像素点与 bg_pixel 像素点之间的差值大于10，加入board_x_set
             if (abs(pixel[0] - bg_pixel[0]) +
                     abs(pixel[1] - bg_pixel[1]) +
                     abs(pixel[2] - bg_pixel[2]) > 10):
                 board_x_set.append(bx)
 
+        # board_x_set超过10个，计算所有符合要求的点的平均值，即为找到board_x
         if len(board_x_set) > 10:
             board_x = sum(board_x_set) / len(board_x_set)
             print('%-12s %s' % ('target_x:', board_x))
@@ -110,7 +111,7 @@ def set_button_position(im, gameover=0):  # 重设点击位置 再来一局位�
 def jump(piece_x, board_x, im, swipe_x1, swipe_y1):
     distanceX = abs(board_x - piece_x)  # 起点到目标的水平距离
     shortEdge = min(im.size)  # 屏幕宽度
-    jumpPercent = distanceX / shortEdge  # 跳跃百分比
+    jumpPercent = distanceX / shortEdge # 跳跃百分比
     jumpFullWidth = 1700  # 跳过整个宽度 需要按压的毫秒数
     press_time = round(jumpFullWidth * jumpPercent)  # 按压时长
     press_time = 0 if not press_time else max(
@@ -142,7 +143,7 @@ def main():
 
         # 找出棋子的位置，也就是第一个点的X轴的坐标
         im = cv2.imread('autojump.png')
-        img, piece_x= find_piece(im,template)
+        piece_x= find_piece(im,template)
 
         # 找出棋盘位置，也就是第二个点的X轴坐标
         im = Image.open('./autojump.png')
